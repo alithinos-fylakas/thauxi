@@ -1,0 +1,449 @@
+    def input(self):
+        keys = pygame.key.get_pressed()
+
+        if keys[pygame.K_RIGHT]:
+            self.direction.x = 1
+            self.facing_right = True
+        elif keys[pygame.K_LEFT]:
+            self.direction.x = -1
+            self.facing_right = False
+        else:
+            self.direction.x = 0
+
+        if self.keyPressed(keys, pygame.K_z) and self.on_ground:
+            self.jump()
+        elif not self.keyPressed(keys, pygame.K_z) and (not self.on_ceiling) and self.direction.y < 0:
+            self.end_jump()
+        
+        if self.keyPressed(keys, pygame.K_a) and not self.healing and self.current_soul >= 3:
+            self.heal_start = pygame.time.get_ticks()
+            self.healing = True
+        
+        if self.keyPressed(keys, pygame.K_c) and not self.dashing:
+            self.dash_start_time = pygame.time.get_ticks()
+            self.dashing = True
+            self.dash_direction = self.facing_right
+        
+        elif self.keyPressed(keys, pygame.K_x):
+            self.status = "attack"
+            self.attack_start = pygame.time.get_ticks()
+    
+    def attack(self):
+
+        if self.status == "attack":
+            current_time = pygame.time.get_ticks()
+            if current_time - self.attack_start < 1000:
+                attack_collision = pygame.sprite.spritecollide(self, self.enemies, False)
+
+                if attack_collision:
+                    for enemie in attack_collision:
+                        enemie.hit_points -= 1
+                        print(enemie.hit_points)
+    
+    def jump(self):
+        self.direction.y = self.vspd
+    
+    def end_jump(self):
+        self.direction.y = 0
+
+    def heal(self):
+        if self.actual_health < self.max_health and self.healing:
+            current_time = pygame.time.get_ticks()
+            if current_time - self.heal_start >= self.heal_duration:
+                self.actual_health += 1
+                self.current_soul -= 3
+                self.healing = False
+
+    def dash(self):
+        if self.dashing:
+            current_time = pygame.time.get_ticks()
+            if current_time - self.dash_start_time <= self.dash_duration:
+                #Dash pra direita
+                if self.dash_direction:
+                    self.direction.x += self.dash_spd
+
+                    self.direction.y -= self.gravity
+                    self.rect.centery -= self.direction.y
+                #Dash para a esquerda
+                elif not self.dash_direction:
+                    self.direction.x -= self.dash_spd
+
+                    self.direction.y -= self.gravity
+                    self.rect.centery -= self.direction.y
+
+                self.cooldown_dash_start = pygame.time.get_ticks()
+
+            #cooldown
+            dash_current_time = pygame.time.get_ticks()
+            if dash_current_time - self.cooldown_dash_start >= self.dash_cooldown:
+                self.dashing = False
+
+    for sprites in self.enemies:
+            if sprites.rect.colliderect(self.rect):
+                if not self.invincible:
+                    self.actual_health -= 1
+                    self.invincible = True
+                    self.hurt_time = pygame.time.get_ticks()
+                    self.checkLife()
+                    print(self.actual_health)
+        self.invincibility_timer()
+
+    for sprites in self.bottles:
+            if sprites.rect.colliderect(self.rect):
+                if self.current_soul < self.max_soul:
+                    self.current_soul += 1
+                    sprites.remove()
+                    sprites.kill()
+                    del sprites
+    
+    def get_status(self):
+        if self.direction.y < 0:
+            self.status = "jump"
+        elif self.direction.y > 1:
+            self.status = "fall"
+        else:
+            if self.direction.x != 0:
+                self.status = "run"
+            elif abs(self.direction.x) > self.hspd:
+                self.status = "dash"
+            else:
+                self.status = "idle"
+
+class Attack(pygame.sprite.Sprite):
+    def __init__(self, width, height):
+        super().__init__()
+        self.surface = pygame.Surface((width, height))
+        self.surface.fill((0, 0, 0))
+        self.rect = self.surface.get_rect()
+
+class Player(pygame.sprite.Sprite):
+    def __init__(self, pos_x, pos_y, group, level, create_jump_particles):
+        super().__init__(group)
+        self.player_surface = pygame.Surface((24, 68))
+        self.import_character_assets()
+        self.frame_index = 0
+        self.animation_spd = 0.5
+        self.image = self.animations["idle"][self.frame_index]
+        self.rect = self.player_surface.get_rect( topleft = (pos_x, pos_y))
+
+        # World awareness
+        self.level_obj = level
+
+        self.world_tiles = self.level_obj.terrain_sprites.sprites()
+        self.enemies = self.level_obj.enemy_sprites.sprites()
+        self.bottles = self.level_obj.soul_sprites
+        self.goal = self.level_obj.goal
+
+        # Dust particles
+        self.import_dust_run_particles()
+        self.dust_frame_index = 0
+        self.dust_animation_spd = 0.3
+        self.display_suface = self.level_obj.map_surface
+        self.create_jump_particles = create_jump_particles
+
+        # World constants
+        self.gravity = 0.8
+
+        # Player movement
+        self.direction = pygame.math.Vector2(0, 0)
+        self.hspd = 15
+        self.vspd = -20
+
+        # Dash
+        self.dashing = False
+        self.dash_spd = 4
+        self.dash_duration = 100
+        self.dash_cooldown = 2000
+
+        # Player Status
+        self.status = "idle"
+        self.on_ground = False
+        self.on_ceiling = False
+        self.facing_right = True
+        self.on_right = False
+        self.on_left = False
+
+        # Player combat atributes
+
+            #Life
+        self.isAlive = True
+        self.max_health = 5
+        self.actual_health = self.max_health
+
+            #Healing
+        self.healing = False
+        self.heal_duration = 2000
+
+            #Invincibility
+        self.invincible = False
+        self.invincible_duration = 1000
+        self.hurt_time = 0
+
+            #Soul
+        self.max_soul = 6
+        self.current_soul = self.max_soul
+
+        # Attack
+        self.attack_obj = Attack(12, 34)
+
+    def import_character_assets(self):
+        character_path = "../graphics/character/"
+        self.animations = {"idle": [], "run": [], "jump": [], "fall": [], "dash": [], "attack": [], "heal": []}
+
+        for animation in self.animations.keys():
+            full_path = character_path + animation
+            self.animations[animation] = import_folder(full_path)
+    
+    def import_dust_run_particles(self):
+        self.dust_run_particles = import_folder("../graphics/character/dust_particles/run")
+
+    def animate(self):
+        animation = self.animations[self.status]
+
+        # loop over frame index
+        self.frame_index += self.animation_spd
+        if self.frame_index >= len(animation):
+            self.frame_index = 0
+        
+        image = animation[int(self.frame_index)]
+        if self.facing_right:
+            self.image = image
+        else:
+            flipped_image = pygame.transform.flip(image, True, False)
+            self.image = flipped_image
+    
+    def run_dust_animation(self):
+        if self.status == "run" and self.on_ground:
+            self.dust_frame_index += self.dust_animation_spd
+            if self.dust_frame_index >= len(self.dust_run_particles):
+                self.dust_frame_index = 0
+            dust_particle = self.dust_run_particles[int(self.dust_frame_index)]
+
+            if self.facing_right:
+                pos = self.rect.bottomleft - pygame.math.Vector2(6, 10)
+                self.display_suface.blit(dust_particle, pos)
+            else:
+                pos = self.rect.bottomright - pygame.math.Vector2(6, 10)
+                flipped_dust_particle = pygame.transform.flip(dust_particle, True, False)
+                self.display_suface.blit(flipped_dust_particle, pos)
+
+    def keyPressed(self, keysPressed, inputKey):
+        if keysPressed[inputKey]:
+            return True
+        else:
+            return False
+
+    def input(self):
+        keys = pygame.key.get_pressed()
+
+        if keys[pygame.K_RIGHT]:
+            self.status = "run"
+            self.direction.x = 1
+            self.facing_right = True
+        elif keys[pygame.K_LEFT]:
+            self.status = "run"
+            self.direction.x = -1
+            self.facing_right = False
+        else:
+            self.status = "idle"
+    
+        if keys[pygame.K_z]:
+            self.status = "jump"
+        
+        if not keys[pygame.K_z]:
+            self.status = "fall"
+    
+        if keys[pygame.K_a] and self.status != "heal":
+            self.heal_start = pygame.time.get_ticks()
+            self.status = "heal"
+    
+        if keys[pygame.K_c] and self.status != "dash":
+            self.dash_start_time = pygame.time.get_ticks()
+            self.status = "dash"
+    
+        if keys[pygame.K_x] and self.status != "attack":
+            self.status = "attack"
+
+    def action(self):
+        match self.status:
+            case "run":
+                self.rect.centerx += self.direction.x * self.hspd
+
+            case "idle":
+                self.direction.x = 0
+
+            case "jump":
+                if self.on_ground:
+                    self.direction.y = self.vspd
+
+            case "fall":
+                if not self.on_ceiling and self.direction.y < 0:
+                    self.direction.y = 0
+
+            case "heal":
+                if self.actual_health < self.max_health:
+                    current_time = pygame.time.get_ticks()
+                    if current_time - self.heal_start >= self.heal_duration:
+                        self.actual_health += 1
+                        self.current_soul -= 3
+                        self.status = "heal"
+
+            case "dash":
+                current_time = pygame.time.get_ticks()
+                if current_time - self.dash_start_time <= self.dash_duration:
+                    #Dash pra direita
+                    if self.facing_right:
+                        self.direction.x = 1
+
+                    #Dash para a esquerda
+                    elif not self.facing_right:
+                        self.direction.x = -1
+                    
+                    self.direction.x *= self.dash_spd
+
+                    self.direction.y -= self.gravity
+                    self.rect.centery -= self.direction.y
+
+                    self.cooldown_dash_start = pygame.time.get_ticks()
+
+                #cooldown
+                dash_current_time = pygame.time.get_ticks()
+                if dash_current_time - self.cooldown_dash_start >= self.dash_cooldown:
+                    self.status = "run"
+
+            case "attack":
+                pass
+
+    def applyGravity(self):
+        self.direction.y += self.gravity
+        self.rect.centery += self.direction.y
+    
+    def horizontal_collision(self):
+
+        self.rect.centerx += self.direction.x * self.hspd
+
+        for sprite in self.world_tiles:
+            if sprite.rect.colliderect(self.rect):
+                self.direction.x = 0
+                if self.direction.x > 0:
+                    self.rect.right = sprite.rect.left
+                    self.on_right = True
+                    self.level_obj.current_x = self.rect.right
+                
+                elif self.direction.x < 0:
+                    self.rect.left = sprite.rect.right
+                    self.on_left = True
+        
+        #if self.on_right and (self.rect.right > self.level_obj.current_x or self.direction. x <= 0):
+            #self.on_right = False
+        #if self.on_left and (self.rect.left < self.level_obj.current_x or self.direction.x >= 0):
+            #self.on_left = False
+
+    def vertical_collision(self):
+        
+        self.applyGravity()
+
+        for sprite in self.world_tiles:
+            if sprite.rect.colliderect(self.rect):
+                if self.direction.y > 0:
+                    self.rect.bottom = sprite.rect.top
+                    self.direction.y = 0
+                    self.on_ground = True
+                elif self.direction.y < 0:
+                    self.rect.top = sprite.rect.bottom
+                    self.direction.y = 0
+                    self.on_ceiling = True
+        
+        if self.on_ground and self.direction.y < 0 or self.direction.y > 1:
+            self.on_ground = False
+        if self.on_ceiling and self.direction.y > 0.1:
+            self.on_ceiling = False
+
+    def checkLife(self):
+        if self.actual_health <= 0:
+            self.isAlive = False
+
+    def takingDamage(self):
+
+        collided_enemies = pygame.sprite.spritecollide(self, self.enemies, False)
+
+        if collided_enemies:
+            for enemy in collided_enemies:
+                enemy_center = enemy.rect.centery
+                enemy_top = enemy.rect.top
+                if enemy_top < self.rect.bottom < enemy_center and self.direction.y >= 0:
+                    self.direction.y = -14
+                    enemy.kill()
+            if not self.invincible:
+                self.actual_health -= 1
+                self.invincible = True
+                self.hurt_time = pygame.time.get_ticks()
+        self.invincibility_timer()
+    
+    def getSoul(self):
+
+        collided_soul = pygame.sprite.spritecollide(self, self.bottles, True)
+        if collided_soul and self.current_soul < self.max_soul:
+            for soul in collided_soul:
+                self.current_soul += soul.value
+
+    def invincibility_timer(self):
+        if self.invincible:
+            current_time = pygame.time.get_ticks()
+            if current_time - self.hurt_time >= self.invincible_duration:
+                self.invincible = False
+
+    """def dash(self):
+        if self.can_dash:
+            current_time = pygame.time.get_ticks()
+            if current_time - self.dash_start_time <= self.dash_duration:
+                self.dashing = True
+                #Dash pra direita
+                if self.dash_direction:
+                    self.direction.x = 1
+                    self.direction.x *= self.dash_spd
+
+                    self.direction.y -= self.gravity
+                    self.rect.centery -= self.direction.y
+                #Dash para a esquerda
+                elif not self.dash_direction:
+                    self.direction.x = -1
+                    self.direction.x *= self.dash_spd
+
+                    self.direction.y -= self.gravity
+                    self.rect.centery -= self.direction.y
+
+                self.can_dash = False
+                self.cooldown_dash_start = pygame.time.get_ticks()
+            else:
+                self.dashing = False
+
+            #cooldown
+            dash_current_time = pygame.time.get_ticks()
+            if dash_current_time - self.cooldown_dash_start >= self.dash_cooldown:
+                self.can_dash = True"""
+
+    def update(self):
+        self.input()
+
+        #action
+
+        self.action()
+
+        # animation
+        #self.get_status()
+        self.animate()
+        self.run_dust_animation()
+
+        # collision
+        self.horizontal_collision()
+        self.vertical_collision()
+
+        # Health
+        self.checkLife()
+        self.takingDamage()
+
+        # Soul
+        self.getSoul()
+
+        #print(self.actual_health)
