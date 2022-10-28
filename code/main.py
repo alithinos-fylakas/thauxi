@@ -26,9 +26,6 @@ while True:
         pygame.quit()
         sys.exit()
 
-    print(gamemanager.state)
-
     #Setting
     pygame.display.update()
     clock.tick(60)
-    print(clock.get_fps())

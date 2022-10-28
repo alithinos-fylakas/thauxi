@@ -172,5 +172,3 @@ class GameManager:
             sys.exit()
         
         self.songs.playSong(self.state)
-
-        print(self.state)

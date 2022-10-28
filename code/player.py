@@ -492,17 +492,3 @@ class Player(pygame.sprite.Sprite):
 
         # Soul
         self.getSoul()
-
-        print(self.actual_health)
-        print(self.status)
-
-        print(f"if alive: {self.isAlive}")
-
-        #print(self.can_doubleJump)
-
-        print(self.direction.y)
-        print(f"is on ground: {self.on_ground}")
-        print(f"is on wall: {self.on_wall}")
-        print(self.jump_count)
-
-        #print(self.attack_direction)
